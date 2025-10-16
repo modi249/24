@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Final-Working-Script
+name: VLESS-Ngrok-Final-Working-SUCCESS
 
 on:
   workflow_dispatch:
@@ -61,8 +61,9 @@ jobs:
           
           echo "✅ Xray installed and service configured."
 
-      - name: Configure Xray VLESS
+      - name: Configure Xray VLESS (Final Fix for JSON Indentation)
         run: |
+          # لاحظ: لا يوجد مسافات بادئة قبل سطر {
           sudo bash -c 'cat << EOF > /usr/local/etc/xray/config.json
 {
   "log": { "loglevel": "warning" },
