@@ -1,13 +1,14 @@
-name: Xray & RS-Tunnel Setup
+name: VLESS-RS-Tunnel-Final
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  secure-vps:
     runs-on: ubuntu-latest
-    steps:
+    timeout-minutes: 360
 
+    steps:
       - name: Generate Random Password & Set Root
         id: passwd
         run: |
@@ -31,16 +32,11 @@ jobs:
           XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
           XRAY_FILENAME="Xray-linux-64.zip"
           XRAY_DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/$XRAY_FILENAME"
-
-          echo "🔽 Downloading Xray $XRAY_VERSION"
           wget -q $XRAY_DOWNLOAD_URL
           sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
-
           sudo mkdir -p /usr/local/etc/xray/
           sudo mkdir -p /etc/xray/
-
-          # تثبيت خدمة Xray بطريقة آمنة بدون مشاكل YAML
-          sudo bash -c "cat > /etc/systemd/system/xray.service <<EOF
+          sudo tee /etc/systemd/system/xray.service > /dev/null <<EOL
 [Unit]
 Description=Xray Service
 After=network.target nss-lookup.target
@@ -55,41 +51,30 @@ Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-EOF"
-
+EOL
           echo "✅ Xray installed and service configured."
 
       - name: Configure Xray VLESS
         run: |
-          sudo bash -c "cat > /usr/local/etc/xray/config.json <<EOF
+          sudo tee /usr/local/etc/xray/config.json > /dev/null <<EOL
 {
-  \"log\": { \"loglevel\": \"warning\" },
-  \"inbounds\": [
+  "log": { "loglevel": "warning" },
+  "inbounds": [
     {
-      \"port\": 443,
-      \"protocol\": \"vless\",
-      \"settings\": {
-        \"clients\": [
-          { \"id\": \"79e26e20-56b3-4f1e-8484-9844e13d11b2\", \"level\": 0, \"email\": \"user@example.com\" }
-        ],
-        \"decryption\": \"none\"
-      },
-      \"streamSettings\": {
-        \"network\": \"ws\",
-        \"security\": \"tls\",
-        \"tlsSettings\": {
-          \"alpn\": [ \"http/1.1\" ],
-          \"allowInsecure\": true,
-          \"fingerprint\": \"random\"
-        },
-        \"wsSettings\": { \"path\": \"/vless-archfx\" }
+      "port": 443,
+      "protocol": "vless",
+      "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },
+        "wsSettings": { "path": "/vless-archfx" }
       }
     }
   ],
-  \"outbounds\": [ { \"protocol\": \"freedom\", \"settings\": {} } ]
+  "outbounds": [ { "protocol": "freedom", "settings": {} } ]
 }
-EOF"
-
+EOL
           sudo systemctl daemon-reload
           sudo systemctl restart xray
           echo "✅ Xray VLESS configured and running on port 443."
@@ -98,35 +83,14 @@ EOF"
         run: |
           curl -sL "https://github.com/radovsky/r-tunnel/releases/download/v1.1.2/r-tunnel_linux_amd64" -o r-tunnel
           chmod +x r-tunnel
-          nohup ./r-tunnel tunnel --host=r.tunnel.workers.dev --remote-port=443 --local-port=443 > r-tunnel.log 2>&1 &
-          echo "Waiting 30 seconds for RS-Tunnel to establish connection..."
-          sleep 30
-          echo "==== RS-Tunnel Log ===="
-          cat r-tunnel.log
-          echo "======================="
+          nohup ./r-tunnel tunnel --host=r.tunnel.workers.dev --remote-port=443 --local-port=443 > /dev/null 2>&1 &
+          echo "✅ RS-Tunnel started on port 443"
 
-      - name: Get RS-Tunnel Address
-        id: tunnel_info
+      - name: Save Credentials
         run: |
-          TUNNEL_ADDRESS=$(grep -o "http[s]*://[^ ]*\.r\.tunnel\.workers\.dev" r-tunnel.log | head -n 1)
-          if [ -z "$TUNNEL_ADDRESS" ]; then
-            VLESS_ADDR="rs-tunnel-failed (Check r-tunnel.log in step above)"
-          else
-            VLESS_ADDR=${TUNNEL_ADDRESS#*//}
-          fi
-          echo "VLESS_ADDR=$VLESS_ADDR" >> $GITHUB_ENV
-          echo "🔥 RS-Tunnel Address Status: $VLESS_ADDR"
-
-      - name: Save Credentials and Tunnel Info
-        run: |
-          echo "VLESS Address: $VLESS_ADDR" > vps-info.txt
-          echo "VLESS Port: 443" >> vps-info.txt
+          echo "VLESS Port: 443" > vps-info.txt
           echo "User: root, Pass: $PASSWORD" >> vps-info.txt
-          echo "=====================================================" >> vps-info.txt
-          echo "INSTRUCTIONS:" >> vps-info.txt
-          echo "1. If VLESS Address shows 'rs-tunnel-failed', check the log file printed in the step 'Install and Run RS-Tunnel'." >> vps-info.txt
-          echo "2. The URL you need is the one ending in '.r.tunnel.workers.dev'." >> vps-info.txt
-          echo "3. Use Port 443." >> vps-info.txt
+          echo "Note: RS-Tunnel is running on port 443" >> vps-info.txt
 
       - name: Upload VPS Info
         uses: actions/upload-artifact@v4
