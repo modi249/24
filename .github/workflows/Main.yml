@@ -1,0 +1,78 @@
+name: VLESS-Ngrok-Tunnel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Generate Random Password
+        id: passwd
+        run: |
+          PASS=$(openssl rand -base64 12)
+          echo "root:$PASS" | sudo chpasswd
+          echo "PASSWORD=$PASS" >> $GITHUB_ENV
+          echo "🔑 Generated random root password"
+
+      - name: Install & Configure SSH & UFW
+        run: |
+          sudo apt update -y
+          sudo apt install -y openssh-server ufw curl wget
+          # إعداد SSH الأساسي (للوصول عبر NGROK SSH)
+          sudo ufw allow 22/tcp
+          sudo ufw allow 443/tcp
+          sudo ufw --force enable
+          sudo service ssh restart
+          echo "✅ Basic security & firewall configured"
+
+      - name: Install Xray (VLESS Server)
+        run: |
+          # تثبيت Xray Core
+          bash -c "$(curl -L https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install
+          sudo mkdir -p /etc/xray/
+          # (نفس التكوين VLESS الذي استخدمناه سابقًا)
+          XRAY_CONFIG='{...}' # (ضع التكوين JSON النهائي هنا)
+          echo "$XRAY_CONFIG" | sudo tee /usr/local/etc/xray/config.json > /dev/null
+          sudo systemctl restart xray
+          echo "✅ Xray VLESS configured and running on port 443."
+
+      - name: Setup Ngrok Tunnel
+        uses: sarisia/ngrok-action@v1
+        with:
+          auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+          tunnel_type: tcp
+          port: 443  # فتح منفذ Xray
+          region: us 
+          # هذا سيفتح منفذ 443 للإنترنت العام عبر رابط Ngrok
+
+      - name: Get Ngrok Tunnel URL
+        id: ngrok
+        run: |
+          # استخراج رابط النفق
+          NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
+          echo "🔥 Ngrok URL: $NGROK_URL"
+
+      - name: Save Credentials and Tunnel Info
+        run: |
+          echo "Ngrok URL: $NGROK_URL" > vps-info.txt
+          echo "IP/Address for VLESS: ${NGROK_URL#tcp://}" >> vps-info.txt 
+          echo "Port: 443" >> vps-info.txt
+          echo "User: root, Pass: $PASSWORD" >> vps-info.txt
+        
+      - name: Upload VPS Info
+        uses: actions/upload-artifact@v4
+        with:
+          name: vps-info
+          path: vps-info.txt
+
+      - name: Keep VPS Alive
+        run: |
+          while true; do
+            echo "[$(date)] VPS running..."
+            sleep 300
+          done
+
