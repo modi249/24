@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Manual-Tunnel-Final-SUCCESS
+name: VLESS-Ngrok-Final-Working-Script
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
           sudo service ssh restart
           echo "✅ Dependencies & security configured"
 
-      - name: Install Xray Manually (Final Stable Version)
+      - name: Install Xray Manually & Service
         run: |
           # 1. تثبيت Xray يدوياً
           XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
@@ -39,28 +39,29 @@ jobs:
           wget -q $XRAY_DOWNLOAD_URL
           sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
           
-          # 2. تثبيت الخدمة يدوياً باستخدام 'cat' الآمن
+          # 2. إنشاء ملفات الخدمة والتكوين
           sudo mkdir -p /usr/local/etc/xray/
           sudo mkdir -p /etc/xray/
-          sudo bash -c 'cat << EOF > /etc/systemd/system/xray.service
-[Unit]
-Description=Xray Service
-After=network.target nss-lookup.target
-
-[Service]
-User=root
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
-NoNewPrivileges=true
-ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF'
+          
+          # 3. تثبيت الخدمة باستخدام أمر echo بسيط (لتجنب أخطاء YAML)
+          sudo echo '[Unit]' | sudo tee /etc/systemd/system/xray.service
+          sudo echo 'Description=Xray Service' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'After=network.target nss-lookup.target' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo '[Service]' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'User=root' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'NoNewPrivileges=true' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'Restart=on-failure' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo '[Install]' | sudo tee -a /etc/systemd/system/xray.service
+          sudo echo 'WantedBy=multi-user.target' | sudo tee -a /etc/systemd/system/xray.service
+          
           echo "✅ Xray installed and service configured."
 
-      - name: Configure Xray VLESS (Using safe EOF block)
+      - name: Configure Xray VLESS
         run: |
           sudo bash -c 'cat << EOF > /usr/local/etc/xray/config.json
 {
