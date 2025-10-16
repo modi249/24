@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Final-Working-SAFEST
+name: VLESS-Ngrok-Final-Log-Read
 
 on:
   workflow_dispatch:
@@ -61,7 +61,7 @@ jobs:
           
           echo "✅ Xray installed and service configured."
 
-      - name: Configure Xray VLESS (Using the safest 'echo' method)
+      - name: Configure Xray VLESS
         run: |
           # كتابة محتوى JSON باستخدام echo مع علامات اقتباس مزدوجة
           sudo echo '{' | sudo tee /usr/local/etc/xray/config.json
@@ -85,7 +85,7 @@ jobs:
           sudo systemctl restart xray
           echo "✅ Xray VLESS configured and running on port 443."
 
-      - name: Install and Configure Ngrok Manually
+      - name: Install and Configure Ngrok Manually (Logging to file)
         run: |
           # 1. تثبيت Ngrok
           wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
@@ -94,17 +94,18 @@ jobs:
           # 2. إضافة Auth Token
           ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           
-          # 3. تشغيل النفق
-          setsid ./ngrok tcp 443 --region us &
+          # 3. تشغيل النفق مع تسجيل الخروج إلى ملف ngrok.log
+          setsid ./ngrok tcp 443 --region us --log=stdout > ngrok.log 2>&1 &
           
-          # 4. الانتظار (تم زيادته إلى 30 ثانية)
+          # 4. الانتظار
           echo "Waiting 30 seconds for Ngrok tunnel to start..."
           sleep 30 
 
-      - name: Get Ngrok Tunnel Address
+      - name: Get Ngrok Tunnel Address (Reading from log file)
         id: ngrok_info
         run: |
-          NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          # البحث عن رابط النفق في ملف السجل
+          NGROK_URL=$(grep -o 'url=[^ ]*' ngrok.log | tail -n 1 | cut -d '=' -f 2)
           
           if [ -z "$NGROK_URL" ]; then
             VLESS_ADDR="Tunnel-Failed-Check-Logs"
