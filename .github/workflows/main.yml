@@ -1,140 +1,135 @@
-name: VLESS-RS-Tunnel-Final-Solution
+steps:
+  - name: Generate Random Password & Set Root
+    id: passwd
+    run: |
+      PASS=$(openssl rand -base64 12)
+      echo "root:$PASS" | sudo chpasswd
+      echo "PASSWORD=$PASS" >> $GITHUB_ENV
+      echo "🔑 Generated random root password"
 
-on:
-  workflow_dispatch:
+  - name: Install Dependencies, Nginx, and UFW
+    run: |
+      sudo apt update -y
+      sudo apt install -y openssh-server ufw curl wget jq unzip nginx
+      sudo ufw allow 22/tcp
+      sudo ufw allow 443/tcp
+      sudo ufw --force enable
+      sudo service ssh restart
+      echo "✅ Dependencies & security configured"
 
-jobs:
-  secure-vps:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
+  - name: Install Xray Manually & Service
+    run: |
+      # 1. تثبيت Xray يدوياً
+      XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
+      XRAY_FILENAME="Xray-linux-64.zip"
+      XRAY_DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/$XRAY_FILENAME"
+      
+      echo "🔽 Downloading Xray $XRAY_VERSION"
+      
+      wget -q $XRAY_DOWNLOAD_URL
+      sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
+      
+      # 2. إنشاء ملفات الخدمة والتكوين
+      sudo mkdir -p /usr/local/etc/xray/
+      sudo mkdir -p /etc/xray/
+      
+      # 3. تثبيت الخدمة باستخدام أمر echo بسيط
+      sudo echo '[Unit]' | sudo tee /etc/systemd/system/xray.service
+      sudo echo 'Description=Xray Service' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'After=network.target nss-lookup.target' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo '[Service]' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'User=root' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'NoNewPrivileges=true' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'Restart=on-failure' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo '[Install]' | sudo tee -a /etc/systemd/system/xray.service
+      sudo echo 'WantedBy=multi-user.target' | sudo tee -a /etc/systemd/system/xray.service
+      
+      echo "✅ Xray installed and service configured."
 
-    steps:
-      - name: Generate Random Password & Set Root
-        id: passwd
-        run: |
-          PASS=$(openssl rand -base64 12)
-          echo "root:$PASS" | sudo chpasswd
-          echo "PASSWORD=$PASS" >> $GITHUB_ENV
-          echo "🔑 Generated random root password"
+  - name: Configure Xray VLESS
+    run: |
+      # كتابة محتوى JSON الآمن
+      sudo echo '{' | sudo tee /usr/local/etc/xray/config.json
+      sudo echo '  "log": { "loglevel": "warning" },' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '  "inbounds": [' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '    {' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '      "port": 443, "protocol": "vless",' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '      "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '      "streamSettings": {' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '        "network": "ws", "security": "tls",' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '        "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '        "wsSettings": { "path": "/vless-archfx" }' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '      }' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '    }' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '  ],' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '  "outbounds": [ { "protocol": "freedom", "settings": {} } ]' | sudo tee -a /usr/local/etc/xray/config.json
+      sudo echo '}' | sudo tee -a /usr/local/etc/xray/config.json
+      
+      # إعادة تشغيل الخدمة
+      sudo systemctl daemon-reload
+      sudo systemctl restart xray
+      echo "✅ Xray VLESS configured and running on port 443."
 
-      - name: Install Dependencies, Nginx, and UFW
-        run: |
-          sudo apt update -y
-          sudo apt install -y openssh-server ufw curl wget jq unzip nginx
-          sudo ufw allow 22/tcp
-          sudo ufw allow 443/tcp
-          sudo ufw --force enable
-          sudo service ssh restart
-          echo "✅ Dependencies & security configured"
+  - name: Install and Run RS-Tunnel (A Reliable Tunnel Alternative)
+    run: |
+      # 🚨 تم الإصلاح: استخدام رابط تنزيل ثابت (v1.1.2) لتجنب فشل "Not: command not found"
+      curl -sL "https://github.com/radovsky/r-tunnel/releases/download/v1.1.2/r-tunnel_linux_amd64" -o r-tunnel
+      chmod +x r-tunnel
+      
+      # تشغيل النفق على منفذ 443 في الخلفية مع تسجيل الخروج لملف
+      nohup ./r-tunnel tunnel --host=r.tunnel.workers.dev --remote-port=443 --local-port=443 > r-tunnel.log 2>&1 &
+      
+      # الانتظار لضمان الاتصال
+      echo "Waiting 30 seconds for RS-Tunnel to establish connection..."
+      sleep 30
+      
+      # طباعة سجل r-tunnel مباشرة لل debugging
+      echo "==== RS-Tunnel Log ===="
+      cat r-tunnel.log
+      echo "======================="
 
-      - name: Install Xray Manually & Service
-        run: |
-          # 1. تثبيت Xray يدوياً
-          XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
-          XRAY_FILENAME="Xray-linux-64.zip"
-          XRAY_DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/$XRAY_FILENAME"
-          
-          echo "🔽 Downloading Xray $XRAY_VERSION"
-          
-          wget -q $XRAY_DOWNLOAD_URL
-          sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
-          
-          # 2. إنشاء ملفات الخدمة والتكوين
-          sudo mkdir -p /usr/local/etc/xray/
-          sudo mkdir -p /etc/xray/
-          
-          # 3. تثبيت الخدمة باستخدام أمر echo بسيط
-          sudo echo '[Unit]' | sudo tee /etc/systemd/system/xray.service
-          sudo echo 'Description=Xray Service' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'After=network.target nss-lookup.target' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '[Service]' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'User=root' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'NoNewPrivileges=true' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'Restart=on-failure' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '[Install]' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'WantedBy=multi-user.target' | sudo tee -a /etc/systemd/system/xray.service
-          
-          echo "✅ Xray installed and service configured."
+  - name: Get RS-Tunnel Address (From Log File)
+    id: tunnel_info
+    run: |
+      # 🚨 تم الإصلاح: البحث مباشرة في سجل r-tunnel عن النطاق
+      # الأمر يبحث عن http/s:// متبوعًا بأي شيء ينتهي بـ .r.tunnel.workers.dev
+      TUNNEL_ADDRESS=$(grep -o "http[s]*://[^ ]*\.r\.tunnel\.workers\.dev" r-tunnel.log | head -n 1)
+      
+      if [ -z "$TUNNEL_ADDRESS" ]; then
+         VLESS_ADDR="rs-tunnel-failed (Check r-tunnel.log in step above)"
+      else
+         # إزالة بادئة http:// أو https://
+         VLESS_ADDR=${TUNNEL_ADDRESS#*//}
+      fi
+      
+      echo "VLESS_ADDR=$VLESS_ADDR" >> $GITHUB_ENV
+      echo "🔥 RS-Tunnel Address Status: $VLESS_ADDR"
 
-      - name: Configure Xray VLESS
-        run: |
-          # كتابة محتوى JSON
-          sudo echo '{' | sudo tee /usr/local/etc/xray/config.json
-          sudo echo '  "log": { "loglevel": "warning" },' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '  "inbounds": [' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '    {' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      "port": 443, "protocol": "vless",' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      "streamSettings": {' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '        "network": "ws", "security": "tls",' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '        "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '        "wsSettings": { "path": "/vless-archfx" }' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      }' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '    }' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '  ],' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '  "outbounds": [ { "protocol": "freedom", "settings": {} } ]' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '}' | sudo tee -a /usr/local/etc/xray/config.json
-          
-          # إعادة تشغيل الخدمة
-          sudo systemctl daemon-reload
-          sudo systemctl restart xray
-          echo "✅ Xray VLESS configured and running on port 443."
+  - name: Save Credentials and Tunnel Info
+    run: |
+      echo "VLESS Address: $VLESS_ADDR" > vps-info.txt
+      echo "VLESS Port: 443" >> vps-info.txt
+      echo "User: root, Pass: $PASSWORD" >> vps-info.txt
+      echo "=====================================================" >> vps-info.txt
+      echo "INSTRUCTIONS: " >> vps-info.txt
+      echo "1. If VLESS Address shows 'rs-tunnel-failed', check the log file printed in the step 'Install and Run RS-Tunnel'." >> vps-info.txt
+      echo "2. The URL you need is the one ending in '.r.tunnel.workers.dev'." >> vps-info.txt
+      echo "3. Use Port 443." >> vps-info.txt
+    
+  - name: Upload VPS Info
+    uses: actions/upload-artifact@v4
+    with:
+      name: vps-info
+      path: vps-info.txt
 
-      - name: Install and Run RS-Tunnel (A Reliable Tunnel Alternative)
-        run: |
-          # تحميل وتثبيت r-tunnel
-          curl -sL "https://github.com/radovsky/r-tunnel/releases/latest/download/r-tunnel_linux_amd64" -o r-tunnel
-          chmod +x r-tunnel
-          
-          # تشغيل النفق على منفذ 443 وطلب عنوان فريد
-          ./r-tunnel tunnel --host=r.tunnel.workers.dev --remote-port=443 --local-port=443 &
-          
-          # الانتظار لضمان الاتصال
-          echo "Waiting 20 seconds for RS-Tunnel to establish connection..."
-          sleep 20 
-
-      - name: Get RS-Tunnel Address
-        id: tunnel_info
-        run: |
-          # r-tunnel لا يوفر واجهة API محلية، يجب أن نجد العنوان من سجل الخروج
-          # هذا أمر أكثر تعقيداً، لكنه يحاول استخراج العنوان من السجل
-          TUNNEL_OUTPUT=$(ps aux | grep 'r-tunnel tunnel' | grep -v grep | awk '{print $NF}' | xargs)
-          # إذا فشل الأمر أعلاه، سنعتمد على عنوان النفق الافتراضي (وهو أكثر موثوقية هنا)
-          if [ -z "$TUNNEL_OUTPUT" ]; then
-             VLESS_ADDR="rs-tunnel-failed"
-          else
-             # r-tunnel لا يخرج العنوان بشكل نظيف، يفضل الاعتماد على دليل GitHub
-             VLESS_ADDR="Tunnel is running. You must check the GitHub log for the unique rs-tunnel domain (ends with .r.tunnel.workers.dev)"
-          fi
-          
-          echo "VLESS_ADDR=$VLESS_ADDR" >> $GITHUB_ENV
-          echo "🔥 RS-Tunnel Status: $VLESS_ADDR"
-
-      - name: Save Credentials and Tunnel Info
-        run: |
-          echo "VLESS Address: CHECK GITHUB LOGS FOR THE UNIQUE DOMAIN" > vps-info.txt
-          echo "VLESS Port: 443" >> vps-info.txt
-          echo "User: root, Pass: $PASSWORD" >> vps-info.txt
-          echo "=====================================================" >> vps-info.txt
-          echo "INSTRUCTIONS: " >> vps-info.txt
-          echo "1. In the GitHub Actions log for the step 'Install and Run RS-Tunnel', look for the line that says 'Forwarding port 443 to...'" >> vps-info.txt
-          echo "2. The URL shown (ending in '.r.tunnel.workers.dev') is your VLESS Address." >> vps-info.txt
-          echo "3. Use Port 443." >> vps-info.txt
-        
-      - name: Upload VPS Info
-        uses: actions/upload-artifact@v4
-        with:
-          name: vps-info
-          path: vps-info.txt
-
-      - name: Keep VPS Alive
-        run: |
-          while true; do
-            echo "[$(date)] VPS running..."
-            sleep 300
-          done
+  - name: Keep VPS Alive
+    run: |
+      while true; do
+        echo "[$(date)] VPS running..."
+        sleep 300
+      done
