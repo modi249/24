@@ -38,7 +38,7 @@ jobs:
           sudo mkdir -p /usr/local/etc/xray/
           sudo mkdir -p /etc/xray/
 
-          sudo bash -c 'cat > /etc/systemd/system/xray.service <<EOF
+          sudo bash -c 'cat > /etc/systemd/system/xray.service << "EOF"
 [Unit]
 Description=Xray Service
 After=network.target nss-lookup.target
@@ -59,7 +59,7 @@ EOF'
 
       - name: Configure Xray VLESS
         run: |
-          sudo bash -c 'cat > /usr/local/etc/xray/config.json <<EOF
+          sudo bash -c 'cat > /usr/local/etc/xray/config.json << "EOF"
 {
   "log": { "loglevel": "warning" },
   "inbounds": [
