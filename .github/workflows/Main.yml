@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Tunnel
+name: VLESS-Ngrok-Manual-Tunnel
 
 on:
   workflow_dispatch:
@@ -17,50 +17,91 @@ jobs:
           echo "PASSWORD=$PASS" >> $GITHUB_ENV
           echo "🔑 Generated random root password"
 
-      - name: Install & Configure SSH & UFW
+      - name: Install Dependencies & Configure SSH/UFW
         run: |
           sudo apt update -y
-          sudo apt install -y openssh-server ufw curl wget
-          # إعداد SSH الأساسي (للوصول عبر NGROK SSH)
+          sudo apt install -y openssh-server ufw curl wget jq
           sudo ufw allow 22/tcp
           sudo ufw allow 443/tcp
           sudo ufw --force enable
           sudo service ssh restart
-          echo "✅ Basic security & firewall configured"
+          echo "✅ Dependencies & security configured"
 
       - name: Install Xray (VLESS Server)
         run: |
           # تثبيت Xray Core
           bash -c "$(curl -L https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install
           sudo mkdir -p /etc/xray/
-          # (نفس التكوين VLESS الذي استخدمناه سابقًا)
-          XRAY_CONFIG='{...}' # (ضع التكوين JSON النهائي هنا)
+          # التكوين النهائي لـ VLESS
+          XRAY_CONFIG='{
+            "log": {
+              "loglevel": "warning"
+            },
+            "inbounds": [
+              {
+                "port": 443,
+                "protocol": "vless",
+                "settings": {
+                  "clients": [
+                    {
+                      "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2",
+                      "level": 0,
+                      "email": "user@example.com"
+                    }
+                  ],
+                  "decryption": "none"
+                },
+                "streamSettings": {
+                  "network": "ws",
+                  "security": "tls",
+                  "tlsSettings": {
+                    "alpn": [ "http/1.1" ],
+                    "allowInsecure": true, 
+                    "fingerprint": "random" 
+                  },
+                  "wsSettings": {
+                    "path": "/vless-archfx"
+                  }
+                }
+              }
+            ],
+            "outbounds": [
+              {
+                "protocol": "freedom",
+                "settings": {}
+              }
+            ]
+          }'
           echo "$XRAY_CONFIG" | sudo tee /usr/local/etc/xray/config.json > /dev/null
           sudo systemctl restart xray
           echo "✅ Xray VLESS configured and running on port 443."
 
-      - name: Setup Ngrok Tunnel
-        uses: sarisia/ngrok-action@v1
-        with:
-          auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
-          tunnel_type: tcp
-          port: 443  # فتح منفذ Xray
-          region: us 
-          # هذا سيفتح منفذ 443 للإنترنت العام عبر رابط Ngrok
+      - name: Install and Configure Ngrok Manually
+        run: |
+          # 1. تثبيت Ngrok
+          wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
+          unzip ngrok-stable-linux-amd64.zip
+          # 2. إضافة Auth Token
+          ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          # 3. تشغيل النفق في الخلفية لمنفذ 443
+          ./ngrok tcp 443 --region us &
+          # 4. الانتظار قليلا حتى يبدأ النفق
+          sleep 5
 
-      - name: Get Ngrok Tunnel URL
-        id: ngrok
+      - name: Get Ngrok Tunnel Address
+        id: ngrok_info
         run: |
           # استخراج رابط النفق
           NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-          echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
-          echo "🔥 Ngrok URL: $NGROK_URL"
+          # تعديل العنوان ليناسب VLESS
+          VLESS_ADDR=$(echo "${NGROK_URL#tcp://}") 
+          echo "VLESS_ADDR=$VLESS_ADDR" >> $GITHUB_ENV
+          echo "🔥 Ngrok Address: $VLESS_ADDR"
 
       - name: Save Credentials and Tunnel Info
         run: |
-          echo "Ngrok URL: $NGROK_URL" > vps-info.txt
-          echo "IP/Address for VLESS: ${NGROK_URL#tcp://}" >> vps-info.txt 
-          echo "Port: 443" >> vps-info.txt
+          echo "VLESS Address: $VLESS_ADDR" > vps-info.txt
+          echo "VLESS Port: 443" >> vps-info.txt
           echo "User: root, Pass: $PASSWORD" >> vps-info.txt
         
       - name: Upload VPS Info
@@ -75,4 +116,3 @@ jobs:
             echo "[$(date)] VPS running..."
             sleep 300
           done
-
