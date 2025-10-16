@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Manual-Tunnel-Final
+name: VLESS-Ngrok-Manual-Tunnel-Final-Fix
 
 on:
   workflow_dispatch:
@@ -29,24 +29,22 @@ jobs:
 
       - name: Install Xray Manually (Bypass 403 Error)
         run: |
-          # فحص حالة الشبكة
-          curl -s https://www.google.com > /dev/null || { echo "❌ Network connectivity failed."; exit 1; }
-          
-          # تثبيت Xray يدوياً عبر تنزيل أحدث إصدار ثابت
+          # 1. تثبيت Xray يدوياً عبر تنزيل أحدث إصدار ثابت
           XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
           XRAY_FILENAME="Xray-linux-64.zip"
           XRAY_DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/$XRAY_FILENAME"
           
-          echo "🔽 Downloading Xray $XRAY_VERSION from $XRAY_DOWNLOAD_URL"
+          echo "🔽 Downloading Xray $XRAY_VERSION"
           
           wget -q $XRAY_DOWNLOAD_URL
           sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
           
-          # تثبيت الخدمة يدوياً
+          # 2. تثبيت الخدمة يدوياً
+          sudo mkdir -p /usr/local/etc/xray/
+          sudo mkdir -p /etc/xray/
           sudo bash -c 'cat << EOF > /etc/systemd/system/xray.service
 [Unit]
 Description=Xray Service
-Documentation=https://github.com/xtls
 After=network.target nss-lookup.target
 
 [Service]
@@ -60,31 +58,28 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF'
-          # تكوين المجلدات
-          sudo mkdir -p /usr/local/etc/xray/
-          sudo mkdir -p /etc/xray/
           echo "✅ Xray installed and service configured."
 
-      - name: Configure Xray VLESS
+      - name: Configure Xray VLESS (Using EOF for clean JSON)
         run: |
-          # التكوين النهائي لـ VLESS (بدون شهادات، يعتمد على Ngrok)
-          XRAY_CONFIG='{
-            "log": { "loglevel": "warning" },
-            "inbounds": [
-              {
-                "port": 443, "protocol": "vless",
-                "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },
-                "streamSettings": {
-                  "network": "ws", "security": "tls",
-                  "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },
-                  "wsSettings": { "path": "/vless-archfx" }
-                }
-              }
-            ],
-            "outbounds": [ { "protocol": "freedom", "settings": {} } ]
-          }'
-          echo "$XRAY_CONFIG" | sudo tee /usr/local/etc/xray/config.json > /dev/null
-          
+          # استخدام EOF لتجنب أخطاء بناء جملة YAML/JSON
+          sudo bash -c 'cat << EOF > /usr/local/etc/xray/config.json
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "port": 443, "protocol": "vless",
+      "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },
+      "streamSettings": {
+        "network": "ws", "security": "tls",
+        "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },
+        "wsSettings": { "path": "/vless-archfx" }
+      }
+    }
+  ],
+  "outbounds": [ { "protocol": "freedom", "settings": {} } ]
+}
+EOF'
           # إعادة تشغيل الخدمة
           sudo systemctl daemon-reload
           sudo systemctl restart xray
@@ -138,4 +133,3 @@ EOF'
             echo "[$(date)] VPS running..."
             sleep 300
           done
-
