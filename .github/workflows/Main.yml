@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Manual-Tunnel
+name: VLESS-Ngrok-Manual-Tunnel-Fixed
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Generate Random Password
+      - name: Generate Random Password & Set Root
         id: passwd
         run: |
           PASS=$(openssl rand -base64 12)
@@ -17,62 +17,41 @@ jobs:
           echo "PASSWORD=$PASS" >> $GITHUB_ENV
           echo "🔑 Generated random root password"
 
-      - name: Install Dependencies & Configure SSH/UFW
+      - name: Install Dependencies & Configure UFW
         run: |
           sudo apt update -y
           sudo apt install -y openssh-server ufw curl wget jq
           sudo ufw allow 22/tcp
           sudo ufw allow 443/tcp
           sudo ufw --force enable
-          sudo service ssh restart
           echo "✅ Dependencies & security configured"
 
       - name: Install Xray (VLESS Server)
         run: |
-          # تثبيت Xray Core
-          bash -c "$(curl -L https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install
+          # 1. تثبيت Xray Core باستخدام sudo
+          sudo bash -c "$(curl -L https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh)" @ install
           sudo mkdir -p /etc/xray/
-          # التكوين النهائي لـ VLESS
+          
+          # 2. كتابة التكوين VLESS (مع sudo)
           XRAY_CONFIG='{
-            "log": {
-              "loglevel": "warning"
-            },
+            "log": { "loglevel": "warning" },
             "inbounds": [
               {
-                "port": 443,
-                "protocol": "vless",
-                "settings": {
-                  "clients": [
-                    {
-                      "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2",
-                      "level": 0,
-                      "email": "user@example.com"
-                    }
-                  ],
-                  "decryption": "none"
-                },
+                "port": 443, "protocol": "vless",
+                "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },
                 "streamSettings": {
-                  "network": "ws",
-                  "security": "tls",
-                  "tlsSettings": {
-                    "alpn": [ "http/1.1" ],
-                    "allowInsecure": true, 
-                    "fingerprint": "random" 
-                  },
-                  "wsSettings": {
-                    "path": "/vless-archfx"
-                  }
+                  "network": "ws", "security": "tls",
+                  "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },
+                  "wsSettings": { "path": "/vless-archfx" }
                 }
               }
             ],
-            "outbounds": [
-              {
-                "protocol": "freedom",
-                "settings": {}
-              }
-            ]
+            "outbounds": [ { "protocol": "freedom", "settings": {} } ]
           }'
           echo "$XRAY_CONFIG" | sudo tee /usr/local/etc/xray/config.json > /dev/null
+          
+          # 3. إعادة تشغيل الخدمة باستخدام sudo
+          sudo systemctl daemon-reload
           sudo systemctl restart xray
           echo "✅ Xray VLESS configured and running on port 443."
 
@@ -81,20 +60,24 @@ jobs:
           # 1. تثبيت Ngrok
           wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
           unzip ngrok-stable-linux-amd64.zip
-          # 2. إضافة Auth Token
+          
+          # 2. إضافة Auth Token (هذا الأمر لا يحتاج sudo)
           ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          # 3. تشغيل النفق في الخلفية لمنفذ 443
-          ./ngrok tcp 443 --region us &
+          
+          # 3. تشغيل النفق في الخلفية (نستخدم setsid لتشغيله في الخلفية بشكل آمن)
+          setsid ./ngrok tcp 443 --region us &
+          
           # 4. الانتظار قليلا حتى يبدأ النفق
-          sleep 5
+          sleep 10 
 
       - name: Get Ngrok Tunnel Address
         id: ngrok_info
         run: |
           # استخراج رابط النفق
           NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-          # تعديل العنوان ليناسب VLESS
-          VLESS_ADDR=$(echo "${NGROK_URL#tcp://}") 
+          # تعديل العنوان ليناسب VLESS (إزالة tcp://)
+          VLESS_ADDR=${NGROK_URL#tcp://}
+          
           echo "VLESS_ADDR=$VLESS_ADDR" >> $GITHUB_ENV
           echo "🔥 Ngrok Address: $VLESS_ADDR"
 
