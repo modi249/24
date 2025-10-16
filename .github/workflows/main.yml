@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Manual-Tunnel-Final-Fix-V2
+name: VLESS-Ngrok-Manual-Tunnel-Final-SUCCESS
 
 on:
   workflow_dispatch:
@@ -27,9 +27,9 @@ jobs:
           sudo service ssh restart
           echo "✅ Dependencies & security configured"
 
-      - name: Install Xray Manually (Bypass 403 Error)
+      - name: Install Xray Manually (Final Stable Version)
         run: |
-          # 1. تثبيت Xray يدوياً عبر تنزيل أحدث إصدار ثابت
+          # 1. تثبيت Xray يدوياً
           XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
           XRAY_FILENAME="Xray-linux-64.zip"
           XRAY_DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/$XRAY_FILENAME"
@@ -39,7 +39,7 @@ jobs:
           wget -q $XRAY_DOWNLOAD_URL
           sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
           
-          # 2. تثبيت الخدمة يدوياً
+          # 2. تثبيت الخدمة يدوياً باستخدام 'cat' الآمن
           sudo mkdir -p /usr/local/etc/xray/
           sudo mkdir -p /etc/xray/
           sudo bash -c 'cat << EOF > /etc/systemd/system/xray.service
