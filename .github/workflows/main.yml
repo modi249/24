@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Final-Log-Read
+name: VLESS-Ngrok-Final-Log-Read-Fix
 
 on:
   workflow_dispatch:
@@ -29,90 +29,103 @@ jobs:
 
       - name: Install Xray Manually & Service
         run: |
-          # 1. تثبيت Xray يدوياً
           XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
           XRAY_FILENAME="Xray-linux-64.zip"
           XRAY_DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/$XRAY_FILENAME"
           
           echo "🔽 Downloading Xray $XRAY_VERSION"
-          
           wget -q $XRAY_DOWNLOAD_URL
           sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
           
-          # 2. إنشاء ملفات الخدمة والتكوين
           sudo mkdir -p /usr/local/etc/xray/
           sudo mkdir -p /etc/xray/
           
-          # 3. تثبيت الخدمة باستخدام أمر echo بسيط
-          sudo echo '[Unit]' | sudo tee /etc/systemd/system/xray.service
-          sudo echo 'Description=Xray Service' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'After=network.target nss-lookup.target' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '[Service]' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'User=root' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'NoNewPrivileges=true' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'Restart=on-failure' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo '[Install]' | sudo tee -a /etc/systemd/system/xray.service
-          sudo echo 'WantedBy=multi-user.target' | sudo tee -a /etc/systemd/system/xray.service
-          
+          cat <<EOF | sudo tee /etc/systemd/system/xray.service
+[Unit]
+Description=Xray Service
+After=network.target nss-lookup.target
+
+[Service]
+User=root
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
           echo "✅ Xray installed and service configured."
 
       - name: Configure Xray VLESS
         run: |
-          # كتابة محتوى JSON باستخدام echo مع علامات اقتباس مزدوجة
-          sudo echo '{' | sudo tee /usr/local/etc/xray/config.json
-          sudo echo '  "log": { "loglevel": "warning" },' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '  "inbounds": [' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '    {' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      "port": 443, "protocol": "vless",' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      "streamSettings": {' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '        "network": "ws", "security": "tls",' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '        "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '        "wsSettings": { "path": "/vless-archfx" }' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '      }' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '    }' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '  ],' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '  "outbounds": [ { "protocol": "freedom", "settings": {} } ]' | sudo tee -a /usr/local/etc/xray/config.json
-          sudo echo '}' | sudo tee -a /usr/local/etc/xray/config.json
-          
-          # إعادة تشغيل الخدمة
+          cat <<EOF | sudo tee /usr/local/etc/xray/config.json
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2",
+            "level": 0,
+            "email": "user@example.com"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "alpn": ["http/1.1"],
+          "allowInsecure": true,
+          "fingerprint": "random"
+        },
+        "wsSettings": { "path": "/vless-archfx" }
+      }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "settings": {} }
+  ]
+}
+EOF
+
           sudo systemctl daemon-reload
           sudo systemctl restart xray
           echo "✅ Xray VLESS configured and running on port 443."
 
       - name: Install and Configure Ngrok Manually (Logging to file)
         run: |
-          # 1. تثبيت Ngrok
           wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
           unzip ngrok-stable-linux-amd64.zip
-          
-          # 2. إضافة Auth Token
           ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          
-          # 3. تشغيل النفق مع تسجيل الخروج إلى ملف ngrok.log
-          setsid ./ngrok tcp 443 --region us --log=stdout > ngrok.log 2>&1 &
-          
-          # 4. الانتظار
-          echo "Waiting 30 seconds for Ngrok tunnel to start..."
-          sleep 30 
+
+          # تشغيل ngrok في الخلفية مع تسجيل الخروج
+          nohup ./ngrok tcp 443 --region us --log=stdout > ngrok.log 2>&1 &
+          echo "Waiting 45 seconds for Ngrok tunnel to start..."
+          sleep 45
+
+          echo "==== Ngrok Log Output ===="
+          cat ngrok.log
+          echo "=========================="
 
       - name: Get Ngrok Tunnel Address (Reading from log file)
         id: ngrok_info
         run: |
-          # البحث عن رابط النفق في ملف السجل
-          NGROK_URL=$(grep -o 'url=[^ ]*' ngrok.log | tail -n 1 | cut -d '=' -f 2)
-          
+          NGROK_URL=$(grep -Eo 'tcp://[0-9a-zA-Z\.\-:]*' ngrok.log | tail -n 1)
+
           if [ -z "$NGROK_URL" ]; then
             VLESS_ADDR="Tunnel-Failed-Check-Logs"
           else
             VLESS_ADDR=${NGROK_URL#tcp://}
           fi
-          
+
           echo "VLESS_ADDR=$VLESS_ADDR" >> $GITHUB_ENV
           echo "🔥 Ngrok Address: $VLESS_ADDR"
 
@@ -121,7 +134,7 @@ jobs:
           echo "VLESS Address: $VLESS_ADDR" > vps-info.txt
           echo "VLESS Port: 443" >> vps-info.txt
           echo "User: root, Pass: $PASSWORD" >> vps-info.txt
-        
+
       - name: Upload VPS Info
         uses: actions/upload-artifact@v4
         with:
