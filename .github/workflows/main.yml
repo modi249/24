@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Final-Working-SUCCESS_V3
+name: VLESS-Ngrok-Final-Working-SAFEST
 
 on:
   workflow_dispatch:
@@ -61,26 +61,25 @@ jobs:
           
           echo "✅ Xray installed and service configured."
 
-      - name: Configure Xray VLESS (Using the secure '|' block)
+      - name: Configure Xray VLESS (Using the safest 'echo' method)
         run: |
-          # استخدام قالب YAML المباشر 'run: |' لكتابة محتوى JSON
-          sudo bash -c 'cat > /usr/local/etc/xray/config.json << EOF
-{
-  "log": { "loglevel": "warning" },
-  "inbounds": [
-    {
-      "port": 443, "protocol": "vless",
-      "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },
-      "streamSettings": {
-        "network": "ws", "security": "tls",
-        "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },
-        "wsSettings": { "path": "/vless-archfx" }
-      }
-    }
-  ],
-  "outbounds": [ { "protocol": "freedom", "settings": {} } ]
-}
-EOF'
+          # كتابة محتوى JSON باستخدام echo مع علامات اقتباس مزدوجة
+          sudo echo '{' | sudo tee /usr/local/etc/xray/config.json
+          sudo echo '  "log": { "loglevel": "warning" },' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '  "inbounds": [' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '    {' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '      "port": 443, "protocol": "vless",' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '      "settings": { "clients": [ { "id": "79e26e20-56b3-4f1e-8484-9844e13d11b2", "level": 0, "email": "user@example.com" } ], "decryption": "none" },' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '      "streamSettings": {' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '        "network": "ws", "security": "tls",' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '        "tlsSettings": { "alpn": [ "http/1.1" ], "allowInsecure": true, "fingerprint": "random" },' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '        "wsSettings": { "path": "/vless-archfx" }' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '      }' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '    }' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '  ],' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '  "outbounds": [ { "protocol": "freedom", "settings": {} } ]' | sudo tee -a /usr/local/etc/xray/config.json
+          sudo echo '}' | sudo tee -a /usr/local/etc/xray/config.json
+          
           # إعادة تشغيل الخدمة
           sudo systemctl daemon-reload
           sudo systemctl restart xray
