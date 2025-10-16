@@ -97,9 +97,9 @@ jobs:
           # 3. تشغيل النفق
           setsid ./ngrok tcp 443 --region us &
           
-          # 4. الانتظار
-          echo "Waiting 15 seconds for Ngrok tunnel to start..."
-          sleep 15 
+          # 4. الانتظار (تم زيادته إلى 30 ثانية)
+          echo "Waiting 30 seconds for Ngrok tunnel to start..."
+          sleep 30 
 
       - name: Get Ngrok Tunnel Address
         id: ngrok_info
