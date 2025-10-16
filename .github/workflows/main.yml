@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Final-Working-SUCCESS
+name: VLESS-Ngrok-Final-Working-SUCCESS_V3
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
           sudo mkdir -p /usr/local/etc/xray/
           sudo mkdir -p /etc/xray/
           
-          # 3. تثبيت الخدمة باستخدام أمر echo بسيط (لتجنب أخطاء YAML)
+          # 3. تثبيت الخدمة باستخدام أمر echo بسيط
           sudo echo '[Unit]' | sudo tee /etc/systemd/system/xray.service
           sudo echo 'Description=Xray Service' | sudo tee -a /etc/systemd/system/xray.service
           sudo echo 'After=network.target nss-lookup.target' | sudo tee -a /etc/systemd/system/xray.service
@@ -61,10 +61,10 @@ jobs:
           
           echo "✅ Xray installed and service configured."
 
-      - name: Configure Xray VLESS (Final Fix for JSON Indentation)
+      - name: Configure Xray VLESS (Using the secure '|' block)
         run: |
-          # لاحظ: لا يوجد مسافات بادئة قبل سطر {
-          sudo bash -c 'cat << EOF > /usr/local/etc/xray/config.json
+          # استخدام قالب YAML المباشر 'run: |' لكتابة محتوى JSON
+          sudo bash -c 'cat > /usr/local/etc/xray/config.json << EOF
 {
   "log": { "loglevel": "warning" },
   "inbounds": [
