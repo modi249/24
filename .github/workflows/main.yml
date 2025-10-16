@@ -90,7 +90,7 @@ EOL
         run: |
           echo "VLESS Port: 443" > vps-info.txt
           echo "User: root, Pass: $PASSWORD" >> vps-info.txt
-          echo "Note: RS-Tunnel is running on port 443" >> vps-info.txt
+          echo "RS-Tunnel is running on port 443" >> vps-info.txt
 
       - name: Upload VPS Info
         uses: actions/upload-artifact@v4
