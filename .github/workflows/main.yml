@@ -1,4 +1,4 @@
-name: VLESS-Ngrok-Manual-Tunnel-Final-Fix
+name: VLESS-Ngrok-Manual-Tunnel-Final-Fix-V2
 
 on:
   workflow_dispatch:
@@ -60,9 +60,8 @@ WantedBy=multi-user.target
 EOF'
           echo "✅ Xray installed and service configured."
 
-      - name: Configure Xray VLESS (Using EOF for clean JSON)
+      - name: Configure Xray VLESS (Using safe EOF block)
         run: |
-          # استخدام EOF لتجنب أخطاء بناء جملة YAML/JSON
           sudo bash -c 'cat << EOF > /usr/local/etc/xray/config.json
 {
   "log": { "loglevel": "warning" },
