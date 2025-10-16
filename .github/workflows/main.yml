@@ -32,15 +32,16 @@ jobs:
           XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name')
           XRAY_FILENAME="Xray-linux-64.zip"
           XRAY_DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/$XRAY_FILENAME"
-          
+
           echo "🔽 Downloading Xray $XRAY_VERSION"
           wget -q $XRAY_DOWNLOAD_URL
           sudo unzip -o $XRAY_FILENAME -d /usr/local/bin/
-          
+
           sudo mkdir -p /usr/local/etc/xray/
           sudo mkdir -p /etc/xray/
-          
-          cat <<EOF | sudo tee /etc/systemd/system/xray.service
+
+          # إنشاء خدمة Xray
+          sudo tee /etc/systemd/system/xray.service > /dev/null <<'EOF'
 [Unit]
 Description=Xray Service
 After=network.target nss-lookup.target
@@ -61,7 +62,7 @@ EOF
 
       - name: Configure Xray VLESS
         run: |
-          cat <<EOF | sudo tee /usr/local/etc/xray/config.json
+          sudo tee /usr/local/etc/xray/config.json > /dev/null <<'EOF'
 {
   "log": { "loglevel": "warning" },
   "inbounds": [
@@ -106,7 +107,6 @@ EOF
           unzip ngrok-stable-linux-amd64.zip
           ./ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-          # تشغيل ngrok في الخلفية مع تسجيل الخروج
           nohup ./ngrok tcp 443 --region us --log=stdout > ngrok.log 2>&1 &
           echo "Waiting 45 seconds for Ngrok tunnel to start..."
           sleep 45
